@@ -57,12 +57,6 @@ The app converts every GIF to the display's 128 × 128 RGB565 animation format a
 
 While a GIF is being sent, unrelated controls are temporarily disabled to prevent two configuration operations from being sent to the keyboard at once.
 
-## Known display limitation
-
-The AK820 firmware has shown inconsistent playback behavior when an upload contains a frame count other than 25: shorter animations can leave the display on a **Loading** percentage, while longer ones can return to the stock AJAZZ animation after playback. Ajazz Keyboard avoids both cases by normalizing every upload to exactly 25 frames.
-
-If an older version of the app leaves the display on Loading after a completed upload, unplug and reconnect the keyboard's USB cable (or power-cycle the keyboard). The animation data is still saved and should load normally after reconnecting.
-
 ## Build from source
 
 The project is a Swift Package and requires Xcode 26 / Swift 6.

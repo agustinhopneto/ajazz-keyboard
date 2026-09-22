@@ -13,7 +13,7 @@ It is designed to be simple, private, and pleasant to use. There is no Windows v
 - Control RGB lighting effects, color, brightness, speed, and direction.
 - Sync the clock shown on the keyboard display.
 - Send animated GIFs to the 128 × 128 keyboard screen.
-- Preview the processed image before uploading it.
+- Play an animated preview of the exact 25-frame result before uploading it.
 - Choose how a GIF fits the display: **Fill**, **Show all**, or **Stretch**.
 - Automatically handles the display orientation used by the AK820 panel.
 - Keeps the interface compact in the macOS menu bar.

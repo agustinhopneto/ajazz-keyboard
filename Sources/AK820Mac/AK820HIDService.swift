@@ -32,6 +32,15 @@ struct AK820Device: Identifiable, Equatable {
     }
 }
 
+/// The rendered animation exactly as it will be sent to the AK820 display.
+/// NSImage is used here only for the menu-bar preview; upload data remains
+/// RGB565 bytes handled separately by the transport.
+struct AK820GIFPreview {
+    let id = UUID()
+    let frames: [NSImage]
+    let frameDelays: [TimeInterval]
+}
+
 enum AK820HIDError: LocalizedError {
     case controlInterfaceNotFound
     case displayInterfaceNotFound
@@ -155,19 +164,19 @@ final class AK820HIDService: ObservableObject {
         lastError = nil
     }
 
-    /// Produces the same 128×128 centre-crop/contain/stretch raster used by
-    /// the uploader. It deliberately previews the processed pixels, not the
-    /// original GIF thumbnail.
-    func previewGIF(from url: URL, fit: AK820ImageFit) -> NSImage? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
-              let rendered = try? renderFrame(image, fit: fit) else {
+    /// Produces an animated preview from the exact normalized 25-frame data
+    /// used by the uploader. This lets the user review fitting, orientation,
+    /// frame sampling, and playback timing before sending anything.
+    func previewAnimation(from url: URL, fit: AK820ImageFit) -> AK820GIFPreview? {
+        guard let animation = try? normalizedAnimation(from: url, fit: fit) else {
             return nil
         }
-        // Keep the preview in the same orientation as the pixels sent to the
-        // vertically inverted AK820 panel.
-        guard let preview = flipPreviewVertically(rendered.preview) else { return nil }
-        return NSImage(cgImage: preview, size: NSSize(width: 128, height: 128))
+        return AK820GIFPreview(
+            frames: animation.previewFrames.map {
+                NSImage(cgImage: $0, size: NSSize(width: 128, height: 128))
+            },
+            frameDelays: animation.frameDelays.map { Double($0) / 200 }
+        )
     }
 
     /// Synchronizes only the time displayed on the keyboard. The four feature
@@ -499,7 +508,23 @@ final class AK820HIDService: ObservableObject {
         numberProperty(device, kIOHIDMaxOutputReportSizeKey)
     }
 
+    private struct NormalizedAnimation {
+        let rgb565Frames: [[UInt8]]
+        let previewFrames: [CGImage]
+        let frameDelays: [UInt8]
+    }
+
     private func prepareAnimation(from url: URL, fit: AK820ImageFit) throws -> (payload: [UInt8], frameCount: Int) {
+        let animation = try normalizedAnimation(from: url, fit: fit)
+        var header = Array(repeating: UInt8(0xFF), count: 256)
+        header[0] = UInt8(animation.rgb565Frames.count)
+        for (index, delay) in animation.frameDelays.enumerated() {
+            header[index + 1] = delay
+        }
+        return (header + animation.rgb565Frames.flatMap { $0 }, animation.rgb565Frames.count)
+    }
+
+    private func normalizedAnimation(from url: URL, fit: AK820ImageFit) throws -> NormalizedAnimation {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             throw AK820HIDError.invalidGIF("arquivo inválido")
         }
@@ -526,22 +551,31 @@ final class AK820HIDService: ObservableObject {
         let repetitions = frameIndexes.reduce(into: [Int: Int]()) { counts, index in
             counts[index, default: 0] += 1
         }
-        var header = Array(repeating: UInt8(0xFF), count: 256)
-        header[0] = UInt8(frameCount)
-        var frames: [[UInt8]] = []
+        var rgb565Frames: [[UInt8]] = []
+        var previewFrames: [CGImage] = []
+        var frameDelays: [UInt8] = []
 
-        for (position, sourceIndex) in frameIndexes.enumerated() {
+        for sourceIndex in frameIndexes {
             guard let image = CGImageSourceCreateImageAtIndex(source, sourceIndex, nil) else {
                 throw AK820HIDError.invalidGIF("não foi possível ler o quadro \(sourceIndex + 1)")
             }
-            frames.append(try rgb565Pixels(for: image, fit: fit))
+            let rendered = try renderFrame(image, fit: fit)
+            guard let preview = flipPreviewVertically(rendered.preview) else {
+                throw AK820HIDError.invalidGIF("não foi possível preparar a prévia")
+            }
+            rgb565Frames.append(flipPixelsVertically(rendered.rgb565))
+            previewFrames.append(preview)
             // Dividing the source delay across its repetitions keeps a short
             // GIF's total animation time close to the original.
             let repeatCount = repetitions[sourceIndex, default: 1]
             let delay = Int(frameDelay(from: source, at: sourceIndex))
-            header[position + 1] = UInt8(max(8, delay / repeatCount))
+            frameDelays.append(UInt8(max(8, delay / repeatCount)))
         }
-        return (header + frames.flatMap { $0 }, frameCount)
+        return NormalizedAnimation(
+            rgb565Frames: rgb565Frames,
+            previewFrames: previewFrames,
+            frameDelays: frameDelays
+        )
     }
 
     private func frameDelay(from source: CGImageSource, at index: Int) -> UInt8 {
@@ -551,12 +585,6 @@ final class AK820HIDService: ObservableObject {
             ?? (gifProperties?[kCGImagePropertyGIFDelayTime] as? NSNumber)?.doubleValue
             ?? 0.1
         return UInt8(max(8, min(255, Int((seconds * 200).rounded()))))
-    }
-
-    private func rgb565Pixels(for image: CGImage, fit: AK820ImageFit) throws -> [UInt8] {
-        // The panel's USB coordinate system is vertically inverted. Flip
-        // rows, but retain their left-to-right order.
-        flipPixelsVertically(try renderFrame(image, fit: fit).rgb565)
     }
 
     private func flipPixelsVertically(_ pixels: [UInt8]) -> [UInt8] {

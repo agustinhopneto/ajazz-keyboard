@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var speed = 3.0
     @State private var selectedSection = Section.color
     @State private var imageFit = AK820ImageFit.fill
+    @State private var gifPreview: AK820GIFPreview?
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var startupError: String?
 
@@ -91,6 +92,9 @@ struct ContentView: View {
         .onChange(of: blue) { _, _ in queueLightingUpdate() }
         .onChange(of: brightness) { _, _ in queueLightingUpdate() }
         .onChange(of: speed) { _, _ in queueLightingUpdate() }
+        .onChange(of: hid.selectedGIFURL) { _, _ in refreshGIFPreview() }
+        .onChange(of: imageFit) { _, _ in refreshGIFPreview() }
+        .onAppear { refreshGIFPreview() }
     }
 
     private var colorTab: some View {
@@ -196,12 +200,9 @@ struct ContentView: View {
 
             HStack(spacing: 12) {
                 Group {
-                    if let selectedGIFURL = hid.selectedGIFURL,
-                       let image = hid.previewGIF(from: selectedGIFURL, fit: imageFit) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .interpolation(.none)
-                            .scaledToFit()
+                    if let gifPreview {
+                        AnimatedGIFPreview(animation: gifPreview)
+                            .id(gifPreview.id)
                     } else {
                         Image(systemName: "photo.on.rectangle.angled")
                             .font(.title2)
@@ -217,7 +218,7 @@ struct ContentView: View {
                         .font(.caption.weight(.medium))
                         .lineLimit(2)
                     Button("Colar GIF do Finder") { hid.importGIFFromPasteboard() }
-                    Text("Prévia fiel: 128 × 128")
+                    Text("Prévia animada: 25 quadros · 128 × 128")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -230,7 +231,7 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
 
-            Text("A prévia mostra o primeiro quadro já convertido; o GIF mantém a animação e os tempos dos quadros.")
+            Text("A prévia reproduz os 25 quadros normalizados, com a mesma orientação e tempos enviados ao teclado.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
@@ -292,6 +293,14 @@ struct ContentView: View {
             speed: UInt8(speed),
             direction: direction
         )
+    }
+
+    private func refreshGIFPreview() {
+        guard let url = hid.selectedGIFURL else {
+            gifPreview = nil
+            return
+        }
+        gifPreview = hid.previewAnimation(from: url, fit: imageFit)
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
@@ -361,6 +370,35 @@ struct ContentView: View {
             .init(name: "Verde", red: 0.12, green: 0.9, blue: 0.42),
             .init(name: "Branco", red: 1.0, green: 1.0, blue: 1.0)
         ]
+    }
+}
+
+private struct AnimatedGIFPreview: View {
+    let animation: AK820GIFPreview
+
+    @State private var frameIndex = 0
+    @State private var playbackTask: Task<Void, Never>?
+
+    var body: some View {
+        Image(nsImage: animation.frames[frameIndex])
+            .resizable()
+            .interpolation(.none)
+            .scaledToFit()
+            .onAppear { startPlayback() }
+            .onDisappear { playbackTask?.cancel() }
+    }
+
+    private func startPlayback() {
+        playbackTask?.cancel()
+        frameIndex = 0
+        playbackTask = Task { @MainActor [animation] in
+            while !Task.isCancelled {
+                let delay = max(animation.frameDelays[frameIndex], 0.04)
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                frameIndex = (frameIndex + 1) % animation.frames.count
+            }
+        }
     }
 }
 

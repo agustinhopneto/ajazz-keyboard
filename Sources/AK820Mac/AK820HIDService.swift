@@ -508,9 +508,23 @@ final class AK820HIDService: ObservableObject {
             throw AK820HIDError.invalidGIF("nenhum quadro encontrado")
         }
 
-        let frameCount = min(sourceCount, 30)
-        let frameIndexes = (0..<frameCount).map { index in
-            sourceCount > frameCount ? index * sourceCount / frameCount : index
+        // The AK820 firmware is most reliable when an animation contains
+        // exactly 25 frames. Fewer frames can leave the panel's Loading
+        // screen active, while more frames can make it show the stock AJAZZ
+        // animation after playback. Normalize every source GIF to 25 frames:
+        // short animations repeat source frames and longer ones are sampled
+        // evenly, always including the final source frame.
+        let frameCount = 25
+        let frameIndexes: [Int]
+        if frameCount == 1 || sourceCount == 1 {
+            frameIndexes = Array(repeating: 0, count: frameCount)
+        } else {
+            frameIndexes = (0..<frameCount).map { position in
+                Int((Double(position) * Double(sourceCount - 1) / Double(frameCount - 1)).rounded())
+            }
+        }
+        let repetitions = frameIndexes.reduce(into: [Int: Int]()) { counts, index in
+            counts[index, default: 0] += 1
         }
         var header = Array(repeating: UInt8(0xFF), count: 256)
         header[0] = UInt8(frameCount)
@@ -521,7 +535,11 @@ final class AK820HIDService: ObservableObject {
                 throw AK820HIDError.invalidGIF("não foi possível ler o quadro \(sourceIndex + 1)")
             }
             frames.append(try rgb565Pixels(for: image, fit: fit))
-            header[position + 1] = frameDelay(from: source, at: sourceIndex)
+            // Dividing the source delay across its repetitions keeps a short
+            // GIF's total animation time close to the original.
+            let repeatCount = repetitions[sourceIndex, default: 1]
+            let delay = Int(frameDelay(from: source, at: sourceIndex))
+            header[position + 1] = UInt8(max(8, delay / repeatCount))
         }
         return (header + frames.flatMap { $0 }, frameCount)
     }

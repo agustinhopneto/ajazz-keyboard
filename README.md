@@ -53,17 +53,15 @@ Open the **Clock** tab and choose **Sync clock** to set the keyboard display to 
 3. Select a fitting mode and check the preview.
 4. Choose **Send to keyboard** and wait for the completion message.
 
-The app converts every GIF to the display's 128 × 128 RGB565 animation format. It supports animations of up to 30 frames; longer GIFs are sampled down to that limit.
+The app converts every GIF to the display's 128 × 128 RGB565 animation format and normalizes it to **exactly 25 frames**. Shorter GIFs repeat frames while keeping their total duration close to the original; longer GIFs are evenly sampled, including the final frame.
 
 While a GIF is being sent, unrelated controls are temporarily disabled to prevent two configuration operations from being sent to the keyboard at once.
 
 ## Known display limitation
 
-On some AK820 firmware versions, GIF uploads with **fewer than 25 frames** can successfully finish and be saved, while the keyboard's physical display remains stuck on a **Loading** percentage (commonly around 76%). This is a keyboard/USB transport behavior on macOS, not a corrupted GIF: after reconnecting the keyboard, the newly uploaded animation is shown correctly.
+The AK820 firmware has shown inconsistent playback behavior when an upload contains a frame count other than 25: shorter animations can leave the display on a **Loading** percentage, while longer ones can return to the stock AJAZZ animation after playback. Ajazz Keyboard avoids both cases by normalizing every upload to exactly 25 frames.
 
-**Workaround:** after the app reports that the GIF upload has completed, unplug and reconnect the keyboard's USB cable (or power-cycle the keyboard). The new GIF remains saved and should load normally after reconnecting.
-
-The app intentionally does not report an upload failure in this case, because the animation data has been written to the keyboard successfully. A direct USB driver path is being investigated for a future release to remove the need for this reconnect.
+If an older version of the app leaves the display on Loading after a completed upload, unplug and reconnect the keyboard's USB cable (or power-cycle the keyboard). The animation data is still saved and should load normally after reconnecting.
 
 ## Build from source
 

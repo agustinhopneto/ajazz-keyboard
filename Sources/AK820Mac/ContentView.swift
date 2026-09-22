@@ -247,6 +247,9 @@ struct ContentView: View {
             }
             Spacer(minLength: 0)
         }
+        // Changing the source or its fitting while packets are being written
+        // could make the on-screen preview disagree with the GIF in flight.
+        .disabled(hid.isSendingGIF)
     }
 
     @ViewBuilder

@@ -1,6 +1,6 @@
 # Ajazz Keyboard
 
-![Ajazz Keyboard icon](Assets/AppIcon.svg)
+<img src="Assets/AppIcon.svg" alt="Ajazz Keyboard icon" width="128" />
 
 **Ajazz Keyboard** is a small, native macOS companion app for the **AJAZZ AK820 Pro**. It brings the essentials of keyboard customization to the Mac: RGB lighting, clock synchronization, and animated GIF uploads for the keyboard's built-in display.
 
